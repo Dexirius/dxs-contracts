@@ -1,7 +1,14 @@
 {
-  "name": "goldengoose",
+  "name": "freezer",
   "version": "1.0.0",
   "license": "MIT",
+  "dependencies": {
+    "truffle": "^5.1.58",
+    "truffle-flattener": "^1.4.4",
+    "truffle-plugin-verify": "^0.5.4",
+    "@truffle/hdwallet-provider": "^1.2.1",
+    "dotenv": "^8.2.0"
+  },  
   "devDependencies": {
     "@openzeppelin/contracts": "^3.1.0",
     "@openzeppelin/contracts-upgradeable": "^3.4.0",

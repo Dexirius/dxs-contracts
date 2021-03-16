@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+//https://freezer.finance
+
 pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
@@ -61,10 +63,13 @@ contract MasterChef is Ownable {
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens.
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
+    mapping(address => mapping(uint256 => uint256)) public userFreezer;
+    address setup;
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when EGG mining starts.
     uint256 public startBlock;
+    bool public paused = true;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
@@ -84,13 +89,18 @@ contract MasterChef is Ownable {
         startBlock = _startBlock;
     }
 
+    modifier onlyOwnerAndSetup() {
+        require(owner() == msg.sender || setup == msg.sender, "Ownable: caller is not the owner or setup");
+        _;
+    }
+
     function poolLength() external view returns (uint256) {
         return poolInfo.length;
     }
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, uint16 _depositFeeBP, bool _withUpdate) public onlyOwner {
+    function add(uint256 _allocPoint, IBEP20 _lpToken, uint16 _depositFeeBP, bool _withUpdate) public onlyOwnerAndSetup {
         require(_depositFeeBP <= 10000, "add: invalid deposit fee basis points");
         if (_withUpdate) {
             massUpdatePools();
@@ -165,12 +175,23 @@ contract MasterChef is Ownable {
 
     // Deposit LP tokens to MasterChef for EGG allocation.
     function deposit(uint256 _pid, uint256 _amount) public {
+        require(paused == false, "!paused");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
         if (user.amount > 0) {
             uint256 pending = user.amount.mul(pool.accEggPerShare).div(1e12).sub(user.rewardDebt);
             if(pending > 0) {
+                uint256 _date = now.sub(userFreezer[msg.sender][_pid]);
+                if( _date > 15 days  ){
+                    pending = pending.add(pending.mul(20).div(100));
+                } else if( _date > 10 days  ){
+                    pending = pending.add(pending.mul(15).div(100));
+                } else if( _date > 7 days  ){
+                    pending = pending.add(pending.mul(10).div(100));
+                } else if( _date > 3 days  ){
+                    pending = pending.add(pending.mul(5).div(100));
+                }
                 safeEggTransfer(msg.sender, pending);
             }
         }
@@ -183,6 +204,7 @@ contract MasterChef is Ownable {
             }else{
                 user.amount = user.amount.add(_amount);
             }
+            userFreezer[msg.sender][_pid] = now;
         }
         user.rewardDebt = user.amount.mul(pool.accEggPerShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
@@ -196,6 +218,16 @@ contract MasterChef is Ownable {
         updatePool(_pid);
         uint256 pending = user.amount.mul(pool.accEggPerShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
+            uint256 _date = now.sub(userFreezer[msg.sender][_pid]);
+            if( _date > 15 days  ){
+                pending = pending.add(pending.mul(20).div(100));
+            } else if( _date > 10 days  ){
+                pending = pending.add(pending.mul(15).div(100));
+            } else if( _date > 7 days  ){
+                pending = pending.add(pending.mul(10).div(100));
+            } else if( _date > 3 days  ){
+                pending = pending.add(pending.mul(5).div(100));
+            }
             safeEggTransfer(msg.sender, pending);
         }
         if(_amount > 0) {
@@ -243,4 +275,14 @@ contract MasterChef is Ownable {
         massUpdatePools();
         eggPerBlock = _eggPerBlock;
     }
+
+    function updatePaused(bool _value) public onlyOwner {
+        paused = _value;
+    }
+
+    function addSetup(address _setup) external {
+        require(setup == address(0));
+        setup = _setup;
+    }
+
 }
