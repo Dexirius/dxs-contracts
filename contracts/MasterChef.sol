@@ -290,6 +290,11 @@ contract MasterChef is Ownable {
         feeAddress = _feeAddress;
     }
 
+    function setChariryAddress(address _charityAddress) public{
+        require(msg.sender == charity, "setChariryAddress: FORBIDDEN");
+        charity = _charityAddress;
+    }
+
     //Pancake has to add hidden dummy pools inorder to alter the emission, here we make it simple and transparent to all.
     function updateEmissionRate(uint256 _eggPerBlock) public onlyOwner {
         massUpdatePools();

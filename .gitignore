@@ -35,3 +35,7 @@ firebase.json
 firebase.js
 .firebaserc
 firebase-debug.log
+/flats
+flats/
+/flats/*
+flats/*
