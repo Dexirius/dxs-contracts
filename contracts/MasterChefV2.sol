@@ -8,7 +8,7 @@ import "./libs/SafeBEP20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import "./EggToken.sol";
+import "./DXSToken.sol";
 
 // MasterChef is the master of Egg. He can make Egg and he is a fair guy.
 //
@@ -48,7 +48,7 @@ contract MasterChefV2 is Ownable, ReentrancyGuard {
     }
 
     // The EGG TOKEN!
-    EggToken public egg;
+    DXSToken public egg;
     // Dev address.
     address public devaddr;
     // EGG tokens created per block.
@@ -75,7 +75,7 @@ contract MasterChefV2 is Ownable, ReentrancyGuard {
     event UpdateEmissionRate(address indexed user, uint256 goosePerBlock);
 
     constructor(
-        EggToken _egg,
+        DXSToken _egg,
         address _devaddr,
         address _feeAddress,
         uint256 _eggPerBlock,

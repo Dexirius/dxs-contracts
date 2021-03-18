@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//https://freezer.finance
+//https://dexirius.finance
 
 pragma solidity 0.6.12;
 
@@ -9,7 +9,21 @@ import "./libs/IBEP20.sol";
 import "./libs/SafeBEP20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "./EggToken.sol";
+import "./DXSToken.sol";
+
+interface IMembers {
+    function addMember(address _member, address _sponsor) external;
+
+    function isMember(address _member) external view returns (bool);
+
+    function membersList(uint256 _id) external view returns (address);
+
+    function setVenus(address _venus) external;
+
+    function getParentTree(address _member, uint256 _deep) external view returns (address[] memory);
+}
+
+
 
 // MasterChef is the master of Egg. He can make Egg and he is a fair guy.
 //
@@ -49,7 +63,9 @@ contract MasterChef is Ownable {
     }
 
     // The EGG TOKEN!
-    EggToken public egg;
+    DXSToken public egg;
+    // Members
+    IMembers public member;       
     // Dev address.
     address public devaddr;
     // EGG tokens created per block.
@@ -63,30 +79,40 @@ contract MasterChef is Ownable {
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens.
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
-    mapping(address => mapping(uint256 => uint256)) public userFreezer;
+    mapping(address => mapping(uint256 => uint256)) public userDexirius;
     address setup;
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when EGG mining starts.
     uint256 public startBlock;
     bool public paused = true;
-
+    uint256[5] public refPercent = [0, 0, 0, 0, 0];
+    uint256[5] public refBalance = [0, 0, 0, 0, 0];
+    address public moderator;
+    address public charity;
+    
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
     constructor(
-        EggToken _egg,
+        DXSToken _egg,
         address _devaddr,
         address _feeAddress,
         uint256 _eggPerBlock,
-        uint256 _startBlock
+        uint256 _startBlock,
+        IMembers _member,
+        address _moderator,
+        address _charity
     ) public {
         egg = _egg;
         devaddr = _devaddr;
         feeAddress = _feeAddress;
         eggPerBlock = _eggPerBlock;
         startBlock = _startBlock;
+        member = _member;
+        moderator = _moderator;
+        charity = _charity;
     }
 
     modifier onlyOwnerAndSetup() {
@@ -168,31 +194,32 @@ contract MasterChef is Ownable {
         uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
         uint256 eggReward = multiplier.mul(eggPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
         egg.mint(devaddr, eggReward.div(10));
+        egg.mint(charity, eggReward.div(4));
         egg.mint(address(this), eggReward);
         pool.accEggPerShare = pool.accEggPerShare.add(eggReward.mul(1e12).div(lpSupply));
         pool.lastRewardBlock = block.number;
     }
 
     // Deposit LP tokens to MasterChef for EGG allocation.
-    function deposit(uint256 _pid, uint256 _amount) public {
+    function deposit(uint256 _pid, uint256 _amount, address ref) public {
         require(paused == false, "!paused");
+
+        if(member.isMember(ref) == false){
+            ref = member.membersList(0);
+        }
+
+        if(member.isMember(msg.sender) == false){
+            member.addMember(msg.sender, ref);
+        }         
+
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
         if (user.amount > 0) {
             uint256 pending = user.amount.mul(pool.accEggPerShare).div(1e12).sub(user.rewardDebt);
             if(pending > 0) {
-                uint256 _date = now.sub(userFreezer[msg.sender][_pid]);
-                if( _date > 15 days  ){
-                    pending = pending.add(pending.mul(20).div(100));
-                } else if( _date > 10 days  ){
-                    pending = pending.add(pending.mul(15).div(100));
-                } else if( _date > 7 days  ){
-                    pending = pending.add(pending.mul(10).div(100));
-                } else if( _date > 3 days  ){
-                    pending = pending.add(pending.mul(5).div(100));
-                }
                 safeEggTransfer(msg.sender, pending);
+                referrals(msg.sender, pending);
             }
         }
         if(_amount > 0) {
@@ -204,7 +231,7 @@ contract MasterChef is Ownable {
             }else{
                 user.amount = user.amount.add(_amount);
             }
-            userFreezer[msg.sender][_pid] = now;
+            userDexirius[msg.sender][_pid] = now;
         }
         user.rewardDebt = user.amount.mul(pool.accEggPerShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
@@ -212,23 +239,15 @@ contract MasterChef is Ownable {
 
     // Withdraw LP tokens from MasterChef.
     function withdraw(uint256 _pid, uint256 _amount) public {
+        require(paused == false, "!paused");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
         updatePool(_pid);
         uint256 pending = user.amount.mul(pool.accEggPerShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
-            uint256 _date = now.sub(userFreezer[msg.sender][_pid]);
-            if( _date > 15 days  ){
-                pending = pending.add(pending.mul(20).div(100));
-            } else if( _date > 10 days  ){
-                pending = pending.add(pending.mul(15).div(100));
-            } else if( _date > 7 days  ){
-                pending = pending.add(pending.mul(10).div(100));
-            } else if( _date > 3 days  ){
-                pending = pending.add(pending.mul(5).div(100));
-            }
             safeEggTransfer(msg.sender, pending);
+            referrals(msg.sender, pending);
         }
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
@@ -240,6 +259,7 @@ contract MasterChef is Ownable {
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
     function emergencyWithdraw(uint256 _pid) public {
+        require(paused == false, "!paused");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         uint256 amount = user.amount;
@@ -276,13 +296,58 @@ contract MasterChef is Ownable {
         eggPerBlock = _eggPerBlock;
     }
 
-    function updatePaused(bool _value) public onlyOwner {
+    function updatePaused(bool _value) public {
+        require(moderator == msg.sender);
         paused = _value;
     }
+
+    function setPercent(uint256 r_1, uint256 r_2, uint256 r_3, uint256 r_4, uint256 r_5) external onlyOwner {
+        refPercent[0] = r_1;
+        refPercent[1] = r_2;
+        refPercent[2] = r_3;
+        refPercent[3] = r_4;
+        refPercent[4] = r_5;
+    }    
+    function setRefBalance(uint256 r_1, uint256 r_2, uint256 r_3, uint256 r_4, uint256 r_5) external onlyOwner {
+        refBalance[0] = r_1;
+        refBalance[1] = r_2;
+        refBalance[2] = r_3;
+        refBalance[3] = r_4;
+        refBalance[4] = r_5;
+    }    
 
     function addSetup(address _setup) external {
         require(setup == address(0));
         setup = _setup;
     }
+
+    function register(address ref) external {
+        if(member.isMember(ref) == false){
+            ref = member.membersList(0);
+        }
+        if(member.isMember(msg.sender) == false){
+            member.addMember(msg.sender, ref);
+        }
+    }
+
+    function referrals(address _user, uint256 _amount) public {
+        address[] memory refTree = member.getParentTree(_user, 5);
+        for (uint256 i = 0; i < 5; i++) {
+            if (refTree[i] != address(0) && refPercent[i] > 0 && _amount > 0) {
+                uint256 refAmount = _amount.mul(refPercent[i]).div(100 ether);
+                if(refAmount > 0 && egg.balanceOf(refTree[i]) >= refBalance[i]){
+                    egg.mint(refTree[i], refAmount);
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    function changeMod(address _mod) external {
+        require(moderator == msg.sender);
+        moderator = _mod;
+    }
+
 
 }

@@ -1,16 +1,39 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
 
-//https://freezer.finance
+//https://dexirius.finance
 
 import "./libs/BEP20.sol";
 
-// EggToken with Governance.
-contract EggToken is BEP20('FREEZER TOKEN', 'FREEZER') {
+// DXSToken with Governance.
+contract DXSToken is BEP20('DXS TOKEN', 'DXS') {
+
+    bool public _pausedTokens = false;
+    address public moderator;
+
+    constructor(address _mod) public {
+        moderator = _mod;
+    }
+
+    function changeMod(address _mod) external {
+        require(moderator == msg.sender);
+        moderator = _mod;
+    }    
+
+    function statusTransfer(bool _value) external {
+        require(moderator == msg.sender);
+        _pausedTokens = _value;
+    }    
+
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
     function mint(address _to, uint256 _amount) public onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
+    }
+
+    function _transfer(address sender, address recipient, uint256 amount) internal virtual override {
+        require(!_pausedTokens, "!paused");
+        super._transfer(sender, recipient, amount);
     }
 
     // Copied and modified from YAM code:

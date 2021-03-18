@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//https://freezer.finance
+//https://dexirius.finance
 
 pragma solidity 0.6.12;
 
